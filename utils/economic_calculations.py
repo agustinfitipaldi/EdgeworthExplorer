@@ -57,50 +57,76 @@ def find_walrasian_equilibrium(
 ) -> List[Tuple[float, float]]:
     """Find Walrasian equilibrium points by checking different price ratios."""
     equilibrium_points = []
-    price_ratios = np.exp(np.linspace(-4, 4, num_prices))
+    price_ratios = np.exp(np.linspace(-5, 5, num_prices))  # Wider range
 
     for price_ratio in price_ratios:
         def demand_excess(x):
             if x <= 0.1 or x >= total_x - 0.1:
                 return float('inf')
 
-            y = price_ratio * (x - total_x/2) + total_y/2
-            if y <= 0.1 or y >= total_y - 0.1:
-                return float('inf')
+            # Try different y values for this x
+            best_excess = float('inf')
+            best_y = None
 
-            mrs_a = calculate_mrs(util_func_a, x, y)
-            mrs_b = calculate_mrs(util_func_b, total_x - x, total_y - y)
+            for t in np.linspace(0.1, 0.9, 20):
+                y_test = total_y * t
 
-            return abs(mrs_a - price_ratio) + abs(mrs_b - price_ratio)
+                if 0.1 < y_test < total_y - 0.1:
+                    mrs_a = calculate_mrs(util_func_a, x, y_test)
+                    mrs_b = calculate_mrs(util_func_b, total_x - x, total_y - y_test)
 
-        # Find minimum using grid search followed by local optimization
-        x_grid = np.linspace(0.1, total_x - 0.1, 20)
-        best_x = min(x_grid, key=demand_excess)
+                    excess = abs(mrs_a - price_ratio) + abs(mrs_b - price_ratio)
+                    if excess < best_excess:
+                        best_excess = excess
+                        best_y = y_test
 
-        # Local optimization around best point
-        dx = 0.1
-        while dx > 1e-4:
-            improved = False
-            for x_new in [best_x - dx, best_x + dx]:
-                if demand_excess(x_new) < demand_excess(best_x):
-                    best_x = x_new
-                    improved = True
-                    break
-            if not improved:
-                dx *= 0.5
+            return best_excess if best_y is not None else float('inf')
 
-        x_eq = best_x
-        y_eq = price_ratio * (x_eq - total_x/2) + total_y/2
+        # Grid search for initial point
+        x_grid = np.linspace(0.1, total_x - 0.1, 30)
+        x_candidates = [(x, demand_excess(x)) for x in x_grid]
+        x_candidates.sort(key=lambda x: x[1])
 
-        if (0.1 < x_eq < total_x - 0.1 and 
-            0.1 < y_eq < total_y - 0.1 and 
-            demand_excess(x_eq) < 0.5):  # Relaxed tolerance
-            equilibrium_points.append((x_eq, y_eq))
+        # Take the best candidates and optimize them
+        for x_init, excess in x_candidates[:3]:
+            if excess < 1.0:  # Relaxed initial tolerance
+                # Local optimization
+                x_current = x_init
+                step = 0.1
+
+                while step > 1e-4:
+                    improved = False
+                    for x_new in [x_current - step, x_current + step]:
+                        if 0.1 < x_new < total_x - 0.1:
+                            if demand_excess(x_new) < demand_excess(x_current):
+                                x_current = x_new
+                                improved = True
+                                break
+                    if not improved:
+                        step *= 0.5
+
+                # Find corresponding y value
+                best_y = None
+                best_excess = float('inf')
+
+                for t in np.linspace(0.1, 0.9, 50):
+                    y_test = total_y * t
+                    if 0.1 < y_test < total_y - 0.1:
+                        mrs_a = calculate_mrs(util_func_a, x_current, y_test)
+                        mrs_b = calculate_mrs(util_func_b, total_x - x_current, total_y - y_test)
+                        excess = abs(mrs_a - price_ratio) + abs(mrs_b - price_ratio)
+
+                        if excess < best_excess:
+                            best_excess = excess
+                            best_y = y_test
+
+                if best_y is not None and best_excess < 1.0:  # Relaxed final tolerance
+                    equilibrium_points.append((x_current, best_y))
 
     # Remove nearby points
     filtered_points = []
     for p1 in equilibrium_points:
-        if not any(np.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2) < 0.5
+        if not any(np.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2) < 1.0
                   for p2 in filtered_points):
             filtered_points.append(p1)
 
