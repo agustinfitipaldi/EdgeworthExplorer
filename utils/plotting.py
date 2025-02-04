@@ -21,7 +21,7 @@ def create_edgeworth_box(
             x=x,
             y=y,
             mode='lines',
-            line=dict(color='blue', width=1, opacity=0.5),
+            line=dict(color='rgba(0,0,255,0.3)', width=1),
             name="Agent A's Indifference Curve",
             hoverinfo='skip',
             showlegend=False
@@ -33,7 +33,7 @@ def create_edgeworth_box(
             x=total_x - x,
             y=total_y - y,
             mode='lines',
-            line=dict(color='red', width=1, opacity=0.5),
+            line=dict(color='rgba(255,0,0,0.3)', width=1),
             name="Agent B's Indifference Curve",
             hoverinfo='skip',
             showlegend=False
