@@ -53,18 +53,19 @@ def find_walrasian_equilibrium(
     util_func_b: Callable,
     total_x: float,
     total_y: float,
-    num_prices: int = 50
+    num_prices: int = 100
 ) -> List[Tuple[float, float]]:
     """Find Walrasian equilibrium points by checking different price ratios."""
     equilibrium_points = []
+    price_ratios = np.exp(np.linspace(-4, 4, num_prices))
 
-    for i in range(num_prices):
-        price_ratio = np.exp(np.linspace(-3, 3, num_prices)[i])
-
+    for price_ratio in price_ratios:
         def demand_excess(x):
-            # Find y through price ratio
-            y = total_y - (price_ratio * (total_x - x))
-            if y < 0 or y > total_y:
+            if x <= 0.1 or x >= total_x - 0.1:
+                return float('inf')
+
+            y = price_ratio * (x - total_x/2) + total_y/2
+            if y <= 0.1 or y >= total_y - 0.1:
                 return float('inf')
 
             mrs_a = calculate_mrs(util_func_a, x, y)
@@ -72,23 +73,38 @@ def find_walrasian_equilibrium(
 
             return abs(mrs_a - price_ratio) + abs(mrs_b - price_ratio)
 
-        # Binary search for equilibrium
-        left, right = 0.1, total_x - 0.1
-        for _ in range(20):
-            mid = (left + right) / 2
-            if demand_excess(mid - 1e-5) > demand_excess(mid + 1e-5):
-                left = mid
-            else:
-                right = mid
+        # Find minimum using grid search followed by local optimization
+        x_grid = np.linspace(0.1, total_x - 0.1, 20)
+        best_x = min(x_grid, key=demand_excess)
 
-        x_eq = (left + right) / 2
-        y_eq = total_y - (price_ratio * (total_x - x_eq))
+        # Local optimization around best point
+        dx = 0.1
+        while dx > 1e-4:
+            improved = False
+            for x_new in [best_x - dx, best_x + dx]:
+                if demand_excess(x_new) < demand_excess(best_x):
+                    best_x = x_new
+                    improved = True
+                    break
+            if not improved:
+                dx *= 0.5
 
-        if 0 < x_eq < total_x and 0 < y_eq < total_y:
-            if demand_excess(x_eq) < 0.1:  # Tolerance for equilibrium
-                equilibrium_points.append((x_eq, y_eq))
+        x_eq = best_x
+        y_eq = price_ratio * (x_eq - total_x/2) + total_y/2
 
-    return equilibrium_points
+        if (0.1 < x_eq < total_x - 0.1 and 
+            0.1 < y_eq < total_y - 0.1 and 
+            demand_excess(x_eq) < 0.5):  # Relaxed tolerance
+            equilibrium_points.append((x_eq, y_eq))
+
+    # Remove nearby points
+    filtered_points = []
+    for p1 in equilibrium_points:
+        if not any(np.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2) < 0.5
+                  for p2 in filtered_points):
+            filtered_points.append(p1)
+
+    return filtered_points
 
 def calculate_offer_curves(
     util_func_a: Callable,
@@ -99,27 +115,57 @@ def calculate_offer_curves(
     endow_ay: float,
     endow_bx: float,
     endow_by: float,
-    num_points: int = 100
+    num_points: int = 200
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Calculate contract curve points."""
+    """Calculate contract curve points using improved optimization."""
     x_points = []
     y_points = []
 
-    # Calculate points along the contract curve
-    for t in np.linspace(0.01, 0.99, num_points):
-        x = total_x * t
-        y = total_y * t
+    # Use more sophisticated sampling
+    for t in np.linspace(0.05, 0.95, num_points):
+        x_base = total_x * t
+        y_values = np.linspace(0.05 * total_y, 0.95 * total_y, 50)
 
-        # Try different y values for each x
-        for s in np.linspace(0.01, 0.99, 20):
-            y_test = total_y * s
+        best_diff = float('inf')
+        best_y = None
 
-            mrs_a = calculate_mrs(util_func_a, x, y_test)
-            mrs_b = calculate_mrs(util_func_b, total_x - x, total_y - y_test)
+        for y_test in y_values:
+            mrs_a = calculate_mrs(util_func_a, x_base, y_test)
+            mrs_b = calculate_mrs(util_func_b, total_x - x_base, total_y - y_test)
 
-            if abs(mrs_a - mrs_b) < 0.1:  # Relaxed tolerance
-                x_points.append(x)
-                y_points.append(y_test)
-                break
+            diff = abs(mrs_a - mrs_b)
+            if diff < best_diff:
+                best_diff = diff
+                best_y = y_test
+
+        # Local optimization around best point
+        if best_y is not None and best_diff < 1.0:  # Relaxed initial tolerance
+            dy = 0.1 * total_y
+            while dy > 1e-6 * total_y:
+                improved = False
+                for y_new in [best_y - dy, best_y + dy]:
+                    if 0.01 * total_y < y_new < 0.99 * total_y:
+                        mrs_a = calculate_mrs(util_func_a, x_base, y_new)
+                        mrs_b = calculate_mrs(util_func_b, total_x - x_base, total_y - y_new)
+                        diff = abs(mrs_a - mrs_b)
+
+                        if diff < best_diff:
+                            best_diff = diff
+                            best_y = y_new
+                            improved = True
+
+                if not improved:
+                    dy *= 0.5
+
+            if best_diff < 0.1:  # Final tolerance
+                x_points.append(x_base)
+                y_points.append(best_y)
+
+    # Smooth the curves using moving average
+    if len(x_points) > 5:
+        window = 5
+        y_smooth = np.convolve(y_points, np.ones(window)/window, mode='valid')
+        x_smooth = x_points[window-1:][:len(y_smooth)]
+        return np.array(x_smooth), np.array(y_smooth)
 
     return np.array(x_points), np.array(y_points)
