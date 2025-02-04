@@ -1,6 +1,6 @@
 import plotly.graph_objects as go
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 def create_edgeworth_box(
     ic_a: List[Tuple[np.ndarray, np.ndarray]],
@@ -100,6 +100,73 @@ def create_edgeworth_box(
         x1=total_x, y1=total_y,
         line=dict(color="black", width=2),
         fillcolor="rgba(0,0,0,0)"
+    )
+
+    return fig
+
+def create_utility_surfaces(
+    util_func_a: Callable,
+    util_func_b: Callable,
+    total_x: float,
+    total_y: float,
+    num_points: int = 50
+) -> go.Figure:
+    """Create 3D visualization of utility surfaces."""
+    # Create grid of points
+    x = np.linspace(0.1, total_x-0.1, num_points)
+    y = np.linspace(0.1, total_y-0.1, num_points)
+    X, Y = np.meshgrid(x, y)
+
+    # Calculate utility values for both agents
+    Z_a = np.zeros_like(X)
+    Z_b = np.zeros_like(X)
+
+    for i in range(num_points):
+        for j in range(num_points):
+            x_val = X[i,j]
+            y_val = Y[i,j]
+            Z_a[i,j] = util_func_a(x_val, y_val)
+            Z_b[i,j] = util_func_b(total_x - x_val, total_y - y_val)
+
+    # Create 3D figure
+    fig = go.Figure()
+
+    # Add surface for Agent A
+    fig.add_trace(go.Surface(
+        x=X,
+        y=Y,
+        z=Z_a,
+        colorscale='Blues',
+        name="Agent A's Utility",
+        showscale=False,
+        opacity=0.8
+    ))
+
+    # Add surface for Agent B
+    fig.add_trace(go.Surface(
+        x=X,
+        y=Y,
+        z=Z_b,
+        colorscale='Reds',
+        name="Agent B's Utility",
+        showscale=False,
+        opacity=0.8
+    ))
+
+    # Configure 3D layout
+    fig.update_layout(
+        title='3D Utility Surfaces',
+        scene=dict(
+            xaxis_title='Good X',
+            yaxis_title='Good Y',
+            zaxis_title='Utility Level',
+            camera=dict(
+                eye=dict(x=1.5, y=1.5, z=1.2)
+            )
+        ),
+        width=800,
+        height=800,
+        showlegend=True
     )
 
     return fig

@@ -5,7 +5,7 @@ from utils.economic_calculations import (
     parse_utility_function, calculate_indifference_curves,
     calculate_offer_curves, find_walrasian_equilibrium
 )
-from utils.plotting import create_edgeworth_box
+from utils.plotting import create_edgeworth_box, create_utility_surfaces
 
 st.set_page_config(page_title="Edgeworth Box Visualization", layout="wide")
 
@@ -63,15 +63,23 @@ try:
         total_x, total_y
     )
 
-    # Create visualization
-    fig = create_edgeworth_box(
+    # Create 2D visualization
+    fig_2d = create_edgeworth_box(
         ic_a, ic_b, offer_curves,
         equilibrium_points,
         total_x, total_y,
         endow_ax, endow_ay
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_2d, use_container_width=True)
+
+    # Create 3D visualization
+    fig_3d = create_utility_surfaces(
+        util_func_a, util_func_b,
+        total_x, total_y
+    )
+
+    st.plotly_chart(fig_3d, use_container_width=True)
 
 except Exception as e:
     st.error(f"Error in calculations: {str(e)}")
@@ -90,4 +98,9 @@ st.markdown("""
 - Green curve: Contract curve (points where marginal rates of substitution are equal)
 - Purple dots: Walrasian equilibrium points (where markets clear)
 - Gold star: Initial endowment point
+
+### 3D Visualization:
+- Blue surface: Agent A's utility function
+- Red surface: Agent B's utility function (inverted)
+- The intersection of these surfaces helps visualize Pareto-efficient allocations
 """)
